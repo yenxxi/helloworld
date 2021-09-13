@@ -1,0 +1,259 @@
+---
+title: "HR source"
+author: "yeonxxi"
+date: '2021 9 13 '
+---
+
+#### 설치 및 데이터 불러오기
+```{r}
+install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+install.packages("readxl", repos = "http://cran.us.r-project.org")
+
+library(dplyr)
+library(ggplot2)
+library(readxl)
+
+getwd()
+setwd("D:/지연/easy_r")
+getwd()
+raw_HR <- read.csv("HR_comma_sep.csv")
+HR <- raw_HR
+```
+repos = "http://cran.us.r-project.org" 를 입력하여 마크다운시 정상출력 오류 해결
+
+
+다음과 같이 데이터를 확인해볼 수 있다.
+
+```{r}
+summary(HR)
+str(HR)
+```
+
+코드 입력상 이름이 길어지므로 이름을 재설정한다
+
+```{r}
+HR <- rename(HR, 
+             SL = satisfaction_level, # 직무만족도
+             LE = last_evaluation,    # 마지막 평가점수
+             NP = number_project,     # 진행 프로젝트 수 
+             AM = average_montly_hours, # 월평균 근무시간
+             TS = time_spend_company, # 근속년수
+             WA = Work_accident,      # 사건사고 여부 (0:없음, 1:있음)
+             PL = promotion_last_5years) # 최근 5년간 승진여부 (0:승진x, 1:승진o)
+```
+
+# 1. 부서별 임금에 따른 직무 만족도 수준 : 임금이 높을수록 직무 만족도가 높을 것
+
+#### 변수 검토
+```{r}
+table(HR$salary)
+qplot(HR$salary)
+
+table(HR$SL)
+summary(HR$SL)
+qplot(HR$SL)
+```
+
+
+#### 평균표 만들기
+```{r}
+salary_SL <- HR %>% 
+  group_by(sales, salary) %>% 
+  summarise(mean_SL = mean(SL), .groups = 'drop')
+
+salary_SL
+```
+
+#### 그래프 만들기
+```{r}
+ggplot(data = salary_SL, aes(x = salary, y = mean_SL, fill = sales)) + 
+  geom_col(position = "dodge") +
+  facet_grid(~sales) +
+  scale_x_discrete(limits = c("low", "medium", "high")) +
+  scale_y_continuous("Satisfaction Level")
+```
+
+#### 결과 분석
+- 마케팅과 R&D를 제외하고 전반적으로 임금이 높을수록 평균 직무 만족도가 높다
+
+
+
+# 2. 부서별 이직률과 임금의 상관관계 : 임금이 높을수록 이직률 낮을 것
+
+#### 변수 검토
+```{r}
+table(HR$left)
+qplot(HR$left)
+```
+
+#### 이직여부에 이름부여
+```{r}
+HR$left <- ifelse(HR$left == 0, "left", "turnover")
+table(HR$left)
+
+qplot(HR$left)
+```
+
+#### 부서별, 이직률, 임금 비율표 만들기
+```{r}
+sales_salary_left <- HR %>% 
+  group_by(sales, salary, left) %>% 
+  summarise(n = n(),  .groups = 'drop') %>% 
+  mutate(tot_group = sum(n)) %>% 
+  mutate(pct = round(n/tot_group*100,1))
+
+sales_salary_left
+```
+
+#### 부서별, 이직률, 임금 표 만들기
+```{r}
+df_turnover1 <- sales_salary_left %>% 
+  filter(left == "turnover") %>% 
+  select(sales, salary, pct)
+
+df_turnover1
+```
+
+#### 그래프 만들기
+```{r}
+ggplot(data = df_turnover1, aes(x = salary, y = pct, fill = sales)) +
+  geom_col(position = "dodge") +
+  scale_x_discrete(limits = c("low", "medium", "high")) +
+#  scale_x_continuous("Salary") + 
+  scale_y_continuous("Turnover Rate")
+```
+
+#### 결과 분석
+- 임금수준이 높은 직원들은 거의 이직하지 않음(이직률 낮음)
+- 평균임금이 낮은 직원들은 회사에 남는 경향(이직률 높음)
+
+
+
+# 3. 부서별 마지막 평가점수와 이직률 상관관계 : 마지막 평가 점수가 낮을수록 이직률 높을 것
+
+## 변수검토
+```{r}
+class(HR$left)
+table(HR$left)
+
+class(HR$LE)
+summary(HR$LE)
+
+qplot(HR$LE)
+
+```
+
+#### 부서별, 이직률, 마지막평가점수 비율표만들기
+
+```{r}
+sales_LE_left <- HR %>% 
+  group_by(sales, LE, left) %>% 
+  summarise(n = n(), .groups = 'drop') %>% 
+  mutate(tot_group = sum(n)) %>% 
+  mutate(pct = round(n/tot_group*100,1))
+
+```
+
+
+#### 부서별, 이직률, 마지막평가점수 표만들기
+```{r}
+df_turnover2 <- sales_LE_left %>% 
+  filter(left == "turnover") %>% 
+  select(sales, LE, pct)
+
+df_turnover2
+```
+
+#### 그래프 만들기
+```{r}
+ggplot(data = df_turnover2, aes(x = LE, y = pct, fill = sales)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  facet_grid(~sales) +
+  scale_x_continuous("Last Evaluation") + 
+  scale_y_continuous("Turnover Rate") 
+```
+
+#### 결과 분석
+- 낮은 성과를 보인 직원들은 회사를 떠나는 경향이 강함
+- 높은 성과를 보인 직원들은 회사에 잔류하는 경향이 강함
+- 보통 0.6~0.8의 수치에서 직원들은 잔류하는 것을 확인
+
+
+
+# 4. 이직률과 진행 프로젝트 개수 상관관계 : 프로젝트 개수가 많을수록 이직률이 높을 것
+
+#### 변수 검토
+```{r}
+table(HR$NP)
+summary(HR$NP)
+qplot(HR$NP)
+```
+
+#### 평균표 만들기
+```{r}
+left_NP <- HR %>% 
+  group_by(sales, left, NP) %>% 
+  summarise(n = n(), .groups='drop') %>% 
+  mutate(tot_group = sum(n)) %>% 
+  mutate(pct = round(n/tot_group*100,1))
+
+left_NP
+```
+
+```{r}
+df <-as.data.frame(left_NP)
+```
+
+chr -> factor로 변환
+
+#### 그래프 만들기
+```{r}
+ggplot(data = df, aes(x = NP, y = pct, fill = left)) +
+  geom_col(position="dodge") +
+  coord_flip() +
+  scale_x_continuous("Number Project") +
+  scale_y_continuous("Rate")
+```
+
+#### 결과 분석
+- 진행중인 프로젝트 개수가 많을수록 이직률 높다 
+- 프로젝트 개수 :  2,6,7 -> 이직
+  프로젝트 개수 :  3,4,5 -> 잔류
+- 특히, 7개의 프로젝트를 다룬 직원들은 모두 이직
+
+
+
+# 5. 부서별 근속연수에 따른 직무 만족도 : 근속년수가 길수록 직무 만족도가 높을 것
+#### 변수검토
+```{r}
+table(HR$TS)
+qplot(HR$TS)
+
+table(HR$SL)
+summary(HR$SL)
+qplot(HR$SL)
+```
+
+#### 평균표 만들기
+```{r}
+TS_SL <- HR %>%
+  group_by(sales, TS) %>% 
+  summarise(mean_SL = mean(SL), .groups = 'drop')
+
+TS_SL
+```
+
+#### 그래프 만들기
+```{r}
+ggplot(data = TS_SL, aes(x = TS, y = mean_SL, col = sales)) + 
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  facet_grid(~sales) +
+  scale_x_continuous("Time Spend Company") + 
+  scale_y_continuous("Satisfaction level")
+```
+
+#### 결과 분석
+- 전반적으로 직무 만족도 수준이 하강하다 상승하는 추세를 보임(v, w자형)
+- 4-7년 차의 직무 만족도가 떨어지므로 보상휴가 등을 줘야함 
